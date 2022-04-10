@@ -1,0 +1,108 @@
+---
+title: "JIVE_Replication"
+author: "Sankha Mitra"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following is a replication of the selected results of the paper "Distortion of Justice: How the Inability to Pay Bail Affects Case Outcomes" by Megan Stevenson. The paper used leniency of judge as an instrumental variable, to measure the effect of pre-trial detention on final conviction. The idea is that: pre-trial detention often leads to increase in guilty pleas, even in cases where the accused would perhaps be acquitted. 
+
+The following replication exercise compares the results obtained in 3 cases --- one where we use OLS, the second case where we use 2SLS and finally, the third case where we use JIVE (popularly known as "Leave one out" estimator). Introduced by Angrist, Imbens and Krueger, JIVE has recently gained much popularlity.
+
+It is to be mentioned here that a major chunk of codes here are adapted from the codes available on the E-book "Causal Inference: The Mixtape" by Scott Cunningham. The book is a great resource material for learning the concepts of causal inference and replicating results of famous papers that have explored causality. 
+
+```{r library install, warning=FALSE, message=FALSE}
+library(haven)
+library(SteinIV)
+library(estimatr)
+library(dplyr)
+library(tidyverse)
+library(ivpack)
+library(stargazer)
+library(lmtest)
+library(lfe)
+```
+For OLS estimation, we have  
+```{r regression1, warning=FALSE, message=FALSE, results=FALSE}
+data1 <- read_dta("D:/Replication_Exercises/Mixtape_IV_JudgeFE_JIVE/R/judge_fe.dta")
+
+data1$bailDate1 <- as.numeric(data1$bailDate) 
+
+## OLS with normal standard errors
+
+model_ols_min <- lm(guilt ~ jail3 + day + day2 + day3 + bailDate1 + t1 + t2 + t3 + t4 + t5, data = data1)
+model_ols_max <- lm(guilt ~ jail3 + day + day2 + day3 + bailDate1 + t1 + t2 + t3 + t4 + t5 + fel + mis + sum + F1 + F2 + F3 + F + M1 + M2 + M3 + M + age + black + male + white + priorCases + priorWI5 + prior_felChar + prior_guilt + onePrior + threePriors + possess + drugSell + aggAss + DUI1st + robbery, data = data1)                         
+
+stargazer(model_ols_min, model_ols_max,type = "text", keep = "jail3", keep.stat = c("n","rsq","ser"))
+```
+For 2SLS estimation, we have 
+```{r regression2, warning=FALSE, message=FALSE}
+## IV Regression with normal standard errors 
+## Codes of this section also available on causal inference mixtape online 
+## Visit the link: https://mixtape.scunning.com/instrumental-variables.html?panelset1=r-code2#judge-fixed-effects
+
+judge_pre <- data1 %>% select(starts_with("judge_")) %>% colnames() %>% subset(., . != "judge_pre_8") %>% paste(., collapse = "+")
+
+controls2 <- data1 %>% select(day, day2, bailDate1, t1, t2, t3, t4, t5) %>% colnames() %>% paste(., collapse = "+")
+
+off <- data1 %>% select(fel, mis, sum, F1, F2, F3, M1, M2, M3, M) %>% colnames() %>% paste(., collapse = "+")
+
+demo <- data1 %>% select(age, male, black, white) %>% colnames() %>% paste(., collapse = "+")
+
+prior <- data1 %>% select(priorCases, prior_felChar, prior_guilt, priorWI5, onePrior, threePriors) %>% colnames() %>% paste(., collapse = "+")
+
+min_iv_formula <- as.formula(paste("guilt ~ ", controls2, "| 0 | (jail3 ~ 0 +", judge_pre,")"))
+
+max_iv_formula <- as.formula(paste("guilt ~", demo,  "+ possess +", off, "+ robbery +", prior, "+ aggAss +", controls2, "+ drugSell + DUI1st  | 0 | (jail3 ~ 0 +", judge_pre,")" ))
+
+min_iv_formula
+max_iv_formula
+
+iv_min <-  felm(min_iv_formula, data = data1)
+summary(iv_min)
+
+iv_max <- felm(max_iv_formula, data = data1)
+summary(iv_max)
+```
+For JIVE, we have 
+
+## JIVE estimation 
+```{r regression3, warning=FALSE, message=FALSE}
+X_min <- data1 %>% select(jail3, day, day2, t1, t2, t3, t4, t5, bailDate1 ) %>% model.matrix(data = ., ~.)
+Z_min <- data1 %>%  select(-judge_pre_8) %>% select(starts_with("judge_"), day, day2, t1, t2, t3, t4, t5, bailDate1 ) %>% model.matrix(data = ., ~.)
+
+min_jive <- jive.est(data1$guilt, X_min, Z_min)
+min_jive$est
+```
+
+q()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
